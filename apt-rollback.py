@@ -33,7 +33,7 @@ def open_(path, *args, **kwargs):
 
 
 def get_actions(until):
-    '''Returns applicable log actions in reversed cronological order'''
+    '''Returns applicable log actions in reversed chronological order'''
 
     log_files = (
         entry for entry in os.scandir('/var/log')
