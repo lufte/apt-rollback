@@ -34,6 +34,8 @@ def open_(path, *args, **kwargs):
 
 
 def get_actions(until):
+    '''Returns applicable log actions in reversed cronological order'''
+
     log_files = (
         entry for entry in os.scandir('/var/log')
         if entry.is_file() and entry.name.startswith('dpkg.log')
