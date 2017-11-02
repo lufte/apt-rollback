@@ -3,12 +3,11 @@ import gzip
 import itertools
 import os
 import re
-import urllib.request
 import urllib.parse
+import urllib.request
+from bisect import bisect_left
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
-from bisect import bisect_left
-
 
 TIMESTAMP_FORMAT = '"YYYY-MM-DD hh:mm:ss"'
 WORKING_DIR = '/tmp'
