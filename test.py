@@ -72,6 +72,14 @@ def mock_open_(path, *args, **kwargs):
         return MockFile(['2015-01-01 00:00:00 install pkg:arch <none> 1'])
     elif path == 'dpkg.log.3':
         return MockFile(['2016-01-01 00:00:00 upgrade pkg:arch 1 2'])
+    elif path == 'dpkg.log.installs':
+        return MockFile(['2016-01-01 00:00:00 install pkg:arch <none> 2'])
+    elif path == 'dpkg.log.upgrades':
+        return MockFile(['2016-01-01 00:00:00 upgrade pkg:arch 1 2'])
+    elif path == 'dpkg.log.removes':
+        return MockFile(['2016-01-01 00:00:00 remove pkg:arch 1 <none>'])
+    elif path == 'dpkg.log.purges':
+        return MockFile(['2016-01-01 00:00:00 purge pkg:arch 1 <none>'])
     elif path == 'dpkg.log.non-applicable':
         return MockFile([
             '2016-01-01 00:00:00 status pkg:arch',
@@ -131,6 +139,38 @@ class GetActionsTestCase(unittest.TestCase):
             'fromversion': '2',
             'toversion': '3'
         })
+
+    def test_install_actions(self, mock_scandir):
+        '''get_actions evaluates install actions'''
+        file1 = self.build_entry('dpkg.log.installs')
+        mock_scandir.return_value = [file1]
+
+        actions = list(aptrollback.get_actions('2014-01-01 00:00:00'))
+        self.assertEqual(len(actions), 1)
+
+    def test_upgrade_actions(self, mock_scandir):
+        '''get_actions evaluates upgrade actions'''
+        file1 = self.build_entry('dpkg.log.upgrades')
+        mock_scandir.return_value = [file1]
+
+        actions = list(aptrollback.get_actions('2014-01-01 00:00:00'))
+        self.assertEqual(len(actions), 1)
+
+    def test_remove_actions(self, mock_scandir):
+        '''get_actions evaluates remove actions'''
+        file1 = self.build_entry('dpkg.log.removes')
+        mock_scandir.return_value = [file1]
+
+        actions = list(aptrollback.get_actions('2014-01-01 00:00:00'))
+        self.assertEqual(len(actions), 1)
+
+    def test_purge_actions(self, mock_scandir):
+        '''get_actions evaluates purge actions'''
+        file1 = self.build_entry('dpkg.log.purges')
+        mock_scandir.return_value = [file1]
+
+        actions = list(aptrollback.get_actions('2014-01-01 00:00:00'))
+        self.assertEqual(len(actions), 1)
 
     def test_non_applicable_actions(self, mock_scandir):
         '''get_actions ignores other types of actions'''
