@@ -4,6 +4,7 @@ import sys
 import unittest
 from importlib import import_module
 from unittest.mock import Mock, patch
+from urllib.request import urljoin
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 aptrollback = import_module('apt-rollback')
@@ -220,6 +221,60 @@ class GetActionsTestCase(unittest.TestCase):
         self.assertEqual(len(actions), 2)
         self.assertEqual(actions[0]['package'], 'thirdpackage')
         self.assertEqual(actions[1]['package'], 'secondpackage')
+
+
+class MockResponse:
+
+    def __init__(self, content):
+        self.content = content
+
+    def read(self):
+        return self.content.encode()
+
+
+def mock_urllib_request_urlopen(url):
+
+    if url == '{}/binary/package/'.format(aptrollback.REPOSITORY_URL):
+        return MockResponse('''
+            <html><body>
+                <a href="/package/options/url">version</a>
+                <a href="/package/options/wrongurl">wrong version</a>
+            </body></html>
+        ''')
+    elif url == urljoin(aptrollback.REPOSITORY_URL, '/package/options/url'):
+        return MockResponse('''
+            <html><body>
+                <a href="/file/url">package_randomsuffix_arch.deb</a>
+                <a href="/file/wrongurl">package_randomsuffix_arch2.deb</a>
+            </body></html>
+        ''')
+
+
+class DownloadPackageTestCase(unittest.TestCase):
+
+    @patch('os.path.exists', Mock(return_value=False))
+    @patch('urllib.request.urlopen', mock_urllib_request_urlopen)
+    @patch('urllib.request.urlretrieve')
+    def test_download_new_package(self, mock_urlretrieve):
+        prints = []
+        with patch('apt-rollback.print', lambda m: prints.append(m)):
+            aptrollback.download_package('/dir', 'package', 'arch', 'version')
+        mock_urlretrieve.assert_called_once_with(
+            urljoin(aptrollback.REPOSITORY_URL, '/file/url'),
+            '/dir/package_version_arch.deb'
+        )
+        self.assertEqual(prints[0], 'Downloading {}'.format(
+            urljoin(aptrollback.REPOSITORY_URL, '/file/url')))
+        self.assertEqual(prints[1], 'Finished downloading {}'.format(
+            urljoin(aptrollback.REPOSITORY_URL, '/file/url')))
+
+    @patch('os.path.exists', Mock(return_value=True))
+    def test_download_existing_package(self):
+        prints = []
+        with patch('apt-rollback.print', lambda m: prints.append(m)):
+            aptrollback.download_package('/dir', 'package', 'arch', 'version')
+        self.assertEqual(prints[0], 'We already have {}, neat!'.format(
+            'package_version_arch.deb'))
 
 
 if __name__ == '__main__':
