@@ -12,10 +12,12 @@ aptrollback = import_module('apt-rollback')
 class ParseTimestampTestCase(unittest.TestCase):
 
     def test_valid_timestamp(self):
+        '''parse_timestamp returns the same string if timestamp is valid'''
         self.assertEqual('2017-01-01 00:00:00',
                          aptrollback.parse_timestamp('2017-01-01 00:00:00'))
 
     def test_invalid_timestamp(self):
+        '''parse_timestamp raises an error if timestamp is invalid'''
         self.assertRaises(argparse.ArgumentTypeError,
                           aptrollback.parse_timestamp, 'timestamp')
 
@@ -24,12 +26,14 @@ class OpenTestCase(unittest.TestCase):
 
     @patch('apt-rollback.gzip')
     def test_gzip_file(self, mock_gzip):
+        '''open_ uses gzip.open when filename ends with .gz'''
         mock_gzip.open = Mock(return_value='zip file!')
         self.assertEqual(aptrollback.open_('myfile.gz'),
                          mock_gzip.open.return_value)
 
     @patch('apt-rollback.open')
     def test_gzip_file(self, mock_open):
+        '''open_ uses built-in open when filename doesn't end with .gz'''
         mock_open.return_value = 'text file!'
         self.assertEqual(aptrollback.open_('myfile.log'),
                          mock_open.return_value)
@@ -83,6 +87,10 @@ def mock_open_(path, *args, **kwargs):
             '2016-01-01 00:00:01 install secondpackage:arch <none> 1',
             '2016-01-01 00:00:02 install thirdpackage:arch <none> 1',
         ])
+    elif path == 'dpkg.txt':
+        return MockFile(['2016-01-01 00:00:00 upgrade pkg:arch 1 2'])
+    elif path == 'apt.log':
+        return MockFile(['2015-01-01 00:00:00 upgrade pkg:arch 0 1'])
 
 
 @patch('apt-rollback.open_', mock_open_)
@@ -101,6 +109,7 @@ class GetActionsTestCase(unittest.TestCase):
         return entry
 
     def test_no_valid_files(self, mock_scandir):
+        '''get_actions returns no actions from files that aren't dpkg logs'''
         file1 = self.build_entry('dpkg.txt')
         file2 = self.build_entry('apt.log')
         dir1 = self.build_entry('dir', False)
@@ -110,6 +119,7 @@ class GetActionsTestCase(unittest.TestCase):
         self.assertEqual(len(list(actions)), 0)
 
     def test_action_parsing(self, mock_scandir):
+        '''Validate the format of actions returned by get_actions'''
         file1 = self.build_entry('dpkg.log.1')
         mock_scandir.return_value = [file1]
 
@@ -123,6 +133,7 @@ class GetActionsTestCase(unittest.TestCase):
         })
 
     def test_non_applicable_actions(self, mock_scandir):
+        '''get_actions ignores other types of actions'''
         file1 = self.build_entry('dpkg.log.non-applicable')
         mock_scandir.return_value = [file1]
 
@@ -137,6 +148,7 @@ class GetActionsTestCase(unittest.TestCase):
         })
 
     def test_file_ordering(self, mock_scandir):
+        '''get_actions evaluates files in reversed chronological order'''
         file1 = self.build_entry('dpkg.log.1')
         file2 = self.build_entry('dpkg.log.2')
         file3 = self.build_entry('dpkg.log.3')
@@ -149,6 +161,7 @@ class GetActionsTestCase(unittest.TestCase):
         self.assertEqual(actions[2]['fromversion'], '<none>')
 
     def test_action_ordering(self, mock_scandir):
+        '''get_actions evaluates actions in reversed chronological order'''
         file1 = self.build_entry('dpkg.log.4')
         mock_scandir.return_value = [file1]
 
@@ -159,6 +172,7 @@ class GetActionsTestCase(unittest.TestCase):
         self.assertEqual(actions[2]['package'], 'firstpackage')
 
     def test_reach_timestamp(self, mock_scandir):
+        '''get_actions returns no action older than the target timestamp'''
         file1 = self.build_entry('dpkg.log.4')
         mock_scandir.return_value = [file1]
 
