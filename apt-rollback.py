@@ -57,19 +57,14 @@ def get_actions(until):
                 timestamp_to_file[timestamp] = entry
 
     # Now extract actions from them in the correct order
-    reached_timestamp = False
     for timestamp in reversed(sorted_timestamps):
-        if reached_timestamp:
-            break
-
         entry = timestamp_to_file[timestamp]
         with open_(entry.path, 'rt') as f:
             for line in reversed(f.read().splitlines()):
                 date, time, action, rest = line.strip().split(' ', 3)
-                reached_timestamp = '{} {}'.format(date, time) < until
 
-                if reached_timestamp:
-                    break
+                if '{} {}'.format(date, time) < until:
+                    return
 
                 if action in ('install', 'upgrade', 'remove', 'purge'):
                     package_arch, fromversion, toversion = rest.split(' ')
