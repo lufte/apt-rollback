@@ -33,7 +33,7 @@ class OpenTestCase(unittest.TestCase):
                          mock_gzip.open.return_value)
 
     @patch('apt-rollback.open')
-    def test_gzip_file(self, mock_open):
+    def test_plain_text_file(self, mock_open):
         '''open_ uses built-in open when filename doesn't end with .gz'''
         mock_open.return_value = 'text file!'
         self.assertEqual(aptrollback.open_('myfile.log'),
