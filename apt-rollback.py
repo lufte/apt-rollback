@@ -79,8 +79,12 @@ def get_actions(until):
                 line = f.readline()
 
 
+def build_filename(package, version, arch):
+    return '{}_{}_{}.deb'.format(package, version, arch)
+
+
 def download_package(download_dir, package, arch, version):
-    filename = '{}_{}_{}.deb'.format(package, version, arch)
+    filename = build_filename(package, version, arch)
     if not os.path.exists(os.path.join(download_dir, filename)):
         search_results_url = '{}/binary/{}/'.format(REPOSITORY_URL, package)
         search_results = bytes.decode(
@@ -110,7 +114,7 @@ def download_package(download_dir, package, arch, version):
         print('We already have {}, neat!'.format(filename))
 
 
-if __name__ == '__main__':
+def main():
     argparser = argparse.ArgumentParser(
         description='''Reverts all package operations up
                        to some specific timestamp.'''
@@ -125,9 +129,11 @@ if __name__ == '__main__':
                            "be downloaded")
     args = argparser.parse_args()
 
-    snapshot = {}
-    for action in get_actions(args.timestamp):
-        snapshot[action['package']] = action
+    snapshot = {
+        (action['package'], action['arch']): action
+        for action in
+        get_actions(args.timestamp)
+    }
 
     if not len(snapshot):
         print('No package operations to revert')
@@ -144,9 +150,9 @@ if __name__ == '__main__':
 
     with ThreadPoolExecutor(max_workers=len(snapshot)) as executor:
         futures = {
-            executor.submit(download_package, download_dir, package,
-                            action['arch'], action['fromversion']): action
-            for package, action in snapshot.items()
+            executor.submit(download_package, download_dir, package, arch,
+                            action['fromversion']): action
+            for (package, arch), action in snapshot.items()
             if action['action'] != 'install'
         }
         done, _ = wait(futures.keys())
@@ -158,15 +164,36 @@ if __name__ == '__main__':
               "this command again. If you wish to ignore these packages run "
               "the command again using the -f flag.\n".format(download_dir))
         for action in failed:
-            print('{} {}'.format(action['package'], action['fromversion']))
-        exit(-1)
+            print('{}:{} {}'.format(action['package'], action['arch'],
+                                    action['fromversion']))
+        exit(1)
 
     # remove packages we couldn't download from the snapshot
     for action in failed:
-        del snapshot[action['package']]
+        del snapshot[(action['package'], action['arch'])]
 
-    dpkg_command = 'dpkg -i {}*.deb -P {}'.format(download_dir, ' '.join([
-        action['package'] for action in snapshot.values()
+    if not len(snapshot):
+        print('No package operations to revert')
+        exit(0)
+
+    installs = [
+        os.path.join(download_dir, build_filename(action['package'],
+                                                  action['fromversion'],
+                                                  action['arch']))
+        for action in snapshot.values()
+        if action['action'] != 'install'
+    ]
+    uninstalls = [
+        '{}:{}'.format(action['package'], action['arch'])
+        for action in snapshot.values()
         if action['action'] == 'install'
-    ]))
-    print(dpkg_command)
+    ]
+    dpkg_command = 'dpkg{}{}{}{}'.format(' -i ' if installs else '',
+                                         ' '.join(installs),
+                                         ' -P ' if uninstalls else '',
+                                         ' '.join(uninstalls))
+    os.system(dpkg_command)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 import unittest
 from importlib import import_module
@@ -38,6 +39,15 @@ class OpenTestCase(unittest.TestCase):
         mock_open.return_value = 'text file!'
         self.assertEqual(aptrollback.open_('myfile.log'),
                          mock_open.return_value)
+
+
+        class BuildFilenameTestCase(unittest.TestCase):
+
+            def test_build_filename(self):
+                self.assertEqual(aptrollback.build_filename('first-string',
+                                                            'second-string',
+                                                            'third-string'),
+                                 'first-string_second-string_third-string.deb')
 
 
 class MockFile:
@@ -275,6 +285,187 @@ class DownloadPackageTestCase(unittest.TestCase):
             aptrollback.download_package('/dir', 'package', 'arch', 'version')
         self.assertEqual(prints[0], 'We already have {}, neat!'.format(
             'package_version_arch.deb'))
+
+
+def build_mock_argparser(timestamp, force):
+    mock_argparser = Mock()
+    mock_argparser.return_value.parse_args.return_value.timestamp = timestamp
+    mock_argparser.return_value.parse_args.return_value.force = force
+    return mock_argparser
+
+
+class MockFuture:
+
+    def __init__(self, failed):
+        self.failed = failed
+
+    def exception(self):
+        return self.failed
+
+
+class MockTPE:
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def submit(self, *args, **kwargs):
+        version = args[4]
+        return (
+            MockFuture(failed=True) if version.startswith('failed')
+            else MockFuture(failed=False)
+        )
+
+    def __enter__(self, *args, **kwargs):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        pass
+
+
+class MainTestCase(unittest.TestCase):
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('apt-rollback.get_actions', Mock(return_value=[]))
+    def test_no_operations(self):
+        prints = []
+        with patch('apt-rollback.print', lambda m, *a, **k: prints.append(m)):
+            with self.assertRaises(SystemExit) as cm:
+                aptrollback.main()
+                self.assertEqual(cm.exception.error_code, 0)
+        self.assertEqual(prints[0], 'No package operations to revert')
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('os.mkdir', Mock())
+    @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
+    @patch('apt-rollback.wait', lambda x: (x, None))
+    def test_failed_and_not_force(self):
+        actions = [
+            {'action': 'upgrade', 'package': 'p1', 'arch': 'a1',
+             'fromversion': 'failed', 'toversion': '2'},
+            {'action': 'upgrade', 'package': 'p2', 'arch': 'a1',
+             'fromversion': 'notfailed', 'toversion': '2'},
+        ]
+        prints = []
+        with patch('apt-rollback.print', lambda m, *a, **k: prints.append(m)):
+            with patch('apt-rollback.get_actions', Mock(return_value=actions)):
+                with self.assertRaises(SystemExit) as cm:
+                    aptrollback.main()
+                    self.assertEqual(cm.exception.error_code, 1)
+        self.assertEqual(prints[0],
+                        "\nThe following packages couldn't be downloaded. "
+                        "Please download them manually, place them in "
+                        "/tmp/apt-rollback-timestamp/ and run this command "
+                        "again. If you wish to ignore these packages run the "
+                        "command again using the -f flag.\n")
+        self.assertEqual(prints[1],
+                         '{}:{} {}'.format(actions[0]['package'],
+                                           actions[0]['arch'],
+                                           actions[0]['fromversion']))
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', True))
+    @patch('os.mkdir', Mock())
+    @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
+    @patch('apt-rollback.wait', lambda x: (x, None))
+    def test_failed_and_force(self):
+        actions = [
+            {'action': 'upgrade', 'package': 'p1', 'arch': 'a1',
+             'fromversion': 'failed', 'toversion': '2'},
+            {'action': 'upgrade', 'package': 'p2', 'arch': 'a1',
+             'fromversion': '1.5', 'toversion': '2'},
+        ]
+        system_calls = []
+        with patch('os.system', lambda m, *a, **k: system_calls.append(m)):
+            with patch('apt-rollback.get_actions', Mock(return_value=actions)):
+                aptrollback.main()
+
+        command = re.search('dpkg -i (.*)', system_calls[0])
+        installs = command.group(1).split(' ')
+        self.assertIn('/tmp/apt-rollback-timestamp/p2_1.5_a1.deb', installs)
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('os.mkdir', Mock())
+    @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
+    @patch('apt-rollback.wait', lambda x: (x, None))
+    def test_general(self):
+        actions = reversed([
+            {'action': 'install', 'package': 'p1', 'arch': 'i386',
+             'fromversion': '<none>', 'toversion': '1'},
+            {'action': 'upgrade', 'package': 'p1', 'arch': 'i386',
+             'fromversion': '1', 'toversion': '2'},
+            {'action': 'install', 'package': 'p1', 'arch': 'amd64',
+             'fromversion': '<none>', 'toversion': '1'},
+            {'action': 'purge', 'package': 'p2', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '<none>'},
+            {'action': 'remove', 'package': 'p3', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '<none>'},
+            {'action': 'upgrade', 'package': 'p4', 'arch': 'amd64',
+             'fromversion': '2', 'toversion': '1'},
+            {'action': 'upgrade', 'package': 'p4', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '3'},
+        ])
+        system_calls = []
+        with patch('os.system',
+                   lambda m, *a, **k: system_calls.append(m)):
+            with patch('apt-rollback.get_actions', Mock(return_value=actions)):
+                aptrollback.main()
+
+        command = re.search('dpkg -i (.*) -P (.*)', system_calls[0])
+        installs = command.group(1).split(' ')
+        uninstalls = command.group(2).split(' ')
+        self.assertIn('/tmp/apt-rollback-timestamp/p2_1_amd64.deb', installs)
+        self.assertIn('/tmp/apt-rollback-timestamp/p3_1_amd64.deb', installs)
+        self.assertIn('/tmp/apt-rollback-timestamp/p4_2_amd64.deb', installs)
+        self.assertIn('p1:amd64', uninstalls)
+        self.assertIn('p1:i386', uninstalls)
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('os.mkdir', Mock())
+    @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
+    @patch('apt-rollback.wait', lambda x: (x, None))
+    def test_no_installs(self):
+        actions = reversed([
+            {'action': 'install', 'package': 'p1', 'arch': 'i386',
+             'fromversion': '<none>', 'toversion': '1'},
+            {'action': 'upgrade', 'package': 'p1', 'arch': 'i386',
+             'fromversion': '1', 'toversion': '2'},
+            {'action': 'install', 'package': 'p1', 'arch': 'amd64',
+             'fromversion': '<none>', 'toversion': '1'},
+        ])
+        system_calls = []
+        with patch('os.system', lambda m, *a, **k: system_calls.append(m)):
+            with patch('apt-rollback.get_actions', Mock(return_value=actions)):
+                aptrollback.main()
+
+        command = re.search('dpkg -P (.*)', system_calls[0])
+        uninstalls = command.group(1).split(' ')
+        self.assertIn('p1:amd64', uninstalls)
+        self.assertIn('p1:i386', uninstalls)
+
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('os.mkdir', Mock())
+    @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
+    @patch('apt-rollback.wait', lambda x: (x, None))
+    def test_no_uninstalls(self):
+        actions = reversed([
+            {'action': 'purge', 'package': 'p2', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '<none>'},
+            {'action': 'remove', 'package': 'p3', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '<none>'},
+            {'action': 'upgrade', 'package': 'p4', 'arch': 'amd64',
+             'fromversion': '2', 'toversion': '1'},
+            {'action': 'upgrade', 'package': 'p4', 'arch': 'amd64',
+             'fromversion': '1', 'toversion': '3'},
+        ])
+        system_calls = []
+        with patch('os.system', lambda m, *a, **k: system_calls.append(m)):
+            with patch('apt-rollback.get_actions', Mock(return_value=actions)):
+                aptrollback.main()
+
+        command = re.search('dpkg -i (.*)', system_calls[0])
+        installs = command.group(1).split(' ')
+        self.assertIn('/tmp/apt-rollback-timestamp/p2_1_amd64.deb', installs)
+        self.assertIn('/tmp/apt-rollback-timestamp/p3_1_amd64.deb', installs)
+        self.assertIn('/tmp/apt-rollback-timestamp/p4_2_amd64.deb', installs)
 
 
 if __name__ == '__main__':
