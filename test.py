@@ -287,10 +287,11 @@ class DownloadPackageTestCase(unittest.TestCase):
             'package_version_arch.deb'))
 
 
-def build_mock_argparser(timestamp, force):
+def build_mock_argparser(timestamp, force, print_):
     mock_argparser = Mock()
     mock_argparser.return_value.parse_args.return_value.timestamp = timestamp
     mock_argparser.return_value.parse_args.return_value.force = force
+    mock_argparser.return_value.parse_args.return_value.print = print_
     return mock_argparser
 
 
@@ -324,7 +325,8 @@ class MockTPE:
 
 class MainTestCase(unittest.TestCase):
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False,
+                                                           False))
     @patch('apt-rollback.get_actions', Mock(return_value=[]))
     def test_no_operations(self):
         prints = []
@@ -334,7 +336,8 @@ class MainTestCase(unittest.TestCase):
                 self.assertEqual(cm.exception.error_code, 0)
         self.assertEqual(prints[0], 'No package operations to revert')
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False,
+                                                           False))
     @patch('os.mkdir', Mock())
     @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
     @patch('apt-rollback.wait', lambda x: (x, None))
@@ -362,7 +365,8 @@ class MainTestCase(unittest.TestCase):
                                            actions[0]['arch'],
                                            actions[0]['fromversion']))
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', True))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', True,
+                                                           False))
     @patch('os.mkdir', Mock())
     @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
     @patch('apt-rollback.wait', lambda x: (x, None))
@@ -382,7 +386,8 @@ class MainTestCase(unittest.TestCase):
         installs = command.group(1).split(' ')
         self.assertIn('/tmp/apt-rollback-timestamp/p2_1.5_a1.deb', installs)
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False,
+                                                           False))
     @patch('os.mkdir', Mock())
     @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
     @patch('apt-rollback.wait', lambda x: (x, None))
@@ -418,7 +423,8 @@ class MainTestCase(unittest.TestCase):
         self.assertIn('p1:amd64', uninstalls)
         self.assertIn('p1:i386', uninstalls)
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False,
+                                                           False))
     @patch('os.mkdir', Mock())
     @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
     @patch('apt-rollback.wait', lambda x: (x, None))
@@ -441,7 +447,8 @@ class MainTestCase(unittest.TestCase):
         self.assertIn('p1:amd64', uninstalls)
         self.assertIn('p1:i386', uninstalls)
 
-    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False))
+    @patch('argparse.ArgumentParser', build_mock_argparser('timestamp', False,
+                                                           False))
     @patch('os.mkdir', Mock())
     @patch('apt-rollback.ThreadPoolExecutor', MockTPE)
     @patch('apt-rollback.wait', lambda x: (x, None))
