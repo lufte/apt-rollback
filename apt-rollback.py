@@ -127,6 +127,9 @@ def main():
     argparser.add_argument('-f', '--force', action='store_true',
                            help="force execution even if some packages can't "
                            "be downloaded")
+    argparser.add_argument('-p', '--print', action='store_true',
+                           help="only print the final command instead of "
+                           "executing it")
     args = argparser.parse_args()
 
     snapshot = {
@@ -192,7 +195,8 @@ def main():
                                          ' '.join(installs),
                                          ' -P ' if uninstalls else '',
                                          ' '.join(uninstalls))
-    os.system(dpkg_command)
+
+    os.system(dpkg_command) if not args.print else print('\n' + dpkg_command)
 
 
 if __name__ == '__main__':
