@@ -8,7 +8,7 @@ This tool will revert all package operations on an apt-based system back to a sp
 
 ## Installation
 
-This is a simple, self-contained python3 script with no extra dependencies. If you have python3 (3.5+ particularly) you're good to go, just download [the script](https://github.com/lufte/apt-rollback/edit/master/apt-rollback.py), give it execution permissions and read its help with `./apt-rollback.py -h`.
+This is a simple, self-contained python3 script with no extra dependencies. If you have python3 (3.5+ particularly) you're good to go, just download [the script](https://raw.githubusercontent.com/lufte/apt-rollback/master/apt-rollback.py), give it execution permissions and read its help with `./apt-rollback.py -h`.
 
 ## Dependencies
 
